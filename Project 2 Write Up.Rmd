@@ -1,0 +1,281 @@
+---
+title: "Project 2 Write Up"
+author: "Mihir Gadil, Elie Tetteh-Wayoe, Jessica Fogerty, Aluya Omofuma, Pierre Bamba"
+date: "11/17/2018"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r 1, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include = F}
+library(ggplot2)
+library(dplyr)
+library(leaps)
+library(faraway)
+library(corrplot)
+```
+
+## Introduction 
+
+The Olympic games is international sporting events featuring winter and summer sporting competitions for men and women. The Olympics games is arguably the most prestigious sporting event in the world and its popularity is on the increase. In the 2016 edition held in Rio-Brazil, there were 306 events compared to the very first Olympic games in 1896 held in Athens-Greece which only had 43 events. The growth of the Olympics has been a trend from the early years of the event. In the 1950s, after the second world war and the cusp of the cold war the number of events had tripled to 150 from the very first Olympics. The growth continued till present time although it slowed down a bit. There might be an increase in the number of unique events over the next few years, but it would most likely be minute. 
+The focus of our study is to build on our previous work and create a model that will beable to predict the proportion of medals won at future Olympic Games. Our SMART question is: What proportion of medals will Japan (the next Olympic host country) win during the 2020 Summer Olympic games. 
+Previously we were able to answer the question: Does the host country have an advantage in the olympics? The answer was yes, that the host team preforms better than their performances when not a host team. Drawing on previous Olympic model building research we will be taking the following variable into consideration: GDP per Capita, Population, historical medal counts, planned economy (communist economy), soviet (or was once a soviet) nation, host country (is or isn't). The previous research that we referenced used the variables that were listed ans used the log of GDP, GDP per Capita, and Population, so we followed suit. 
+
+## Exploratory Data Analysis
+
+*Olympic Data Set*
+
+We first started our EDA process by importing the Olympic data from: 
+https://www.kaggle.com/heesoo37/120-years-of-olympic-history-athletes-and-results. The first thing we did was add a Host_Country Column. We then noticed that each athlete was awarded a medal including each team member, we were able to subset the data so that each team was awarded one medal so that there was no discrepency. We changed the structure of some of the columns such as medal, changed to ordered factor. We dropped Age, Height, Weight, City and Games. Next we insert host country data into the data frame. Change some country codes to simplify analysis and select only the Summer Olympics data. Next we created a seperate dataframe with only athletes that have won a medal. We also created an additional data frame with year and total medals won.  We Examined the structure of the data frame and then examined the five statistic summary.
+
+```{r load_data, echo = F}
+#Load the dataset
+athletes <- read.csv("athlete_events.csv", na.strings = c("NA"))
+```
+```{r cleanup_1, echo = F}
+#athletes$Year <- as.integer(athletes$Year)
+athletes$Medal <- factor(athletes$Medal, levels = c("Bronze", "Silver", "Gold"), ordered = TRUE)
+athletes$NOC <- as.character(athletes$NOC)
+#athletes$Gender <- as.factor(athletes$Gender)
+athletes <- subset(athletes, select = -c(Age, Height, Weight, City, Games))
+athletes <- subset(athletes, Season == "Summer")
+```
+
+```{r cleanup_2, include = F}
+hosts <- data.frame(Year = c(seq(1896, 1912, 4), seq(1920, 1936, 4), seq(1948, 2016, 4)), Host_NOC = c("GRE", "FRA", "USA", "GBR", "SWE", "BEL", "FRA", "NED", "USA", "GER", "GBR", "FIN", "AUS", "ITA", "JPN", "MEX", "GER", "CAN", "RUS", "USA", "KOR", "ESP", "USA", "AUS", "GRE", "CHN", "GBR", "BRA"))
+athletes <- merge(athletes, hosts, by.x = "Year", by.y = "Year")
+athletes$Host_NOC[athletes$Year == 1956 & athletes$City == "Stockholm"] <- "SWE"
+athletes$Host_NOC <- as.character(athletes$Host_NOC)
+athletes$NOC[athletes$NOC == "URS"] <- "RUS"
+athletes$NOC[athletes$NOC == "FRG"] <- "GER"
+athletes$NOC[athletes$NOC == "GDR"] <- "GER"
+athletes$NOC[athletes$NOC == "ANZ"] <- "AUS"
+#Equating China and Hong Kong would help too, but it seems like they have been participating as different teams since 1952.
+```
+
+```{r all_medals, echo = F}
+#Subset data to obtain only the medal winners 
+winners_only <- subset(athletes, !is.na(Medal))
+```
+
+```{r host_advantage, include = F}
+#Find the total medal count per year
+total_medals <- winners_only %>% group_by(Year) %>% summarize(Medal_Count = n())
+```
+
+```{r strsum, echo = F}
+#Find the total medal count per year
+str(athletes)
+summary(athletes)
+```
+
+*Country Statistics Dataset*
+
+We then imported the GDP, Population, and per capita GDP data from: https://www.rug.nl/ggdc/historicaldevelopment/maddison/releases/maddison-project-database-2018. We used the Real GDP per Capita in 2011 USD and the Population in thousands. The first step we took to prepare this data for analysis was to change the column names to match the athlete columns. We also selected to keep data later than the year 1896. We alsp multiplied Population by 1000 because it was in 1000's and we wanted the actual Population of each country. The next step we took was to find the whole world's GDP by year, by using that we were able to calculate the share of GDP per country per year. We also examined the structure and summary of this dataset. 
+```{r echo = F}
+#GDP per capita, and Population data
+additional_data <- readxl::read_excel("mpd2018.xlsx", sheet = "Full data")
+additional_data <- subset(additional_data, select = -c(rgdpnapc, i_cig, i_bm), year >= 1896)
+names(additional_data) <- c("NOC", "Country", "Year", "GDPPC", "Population")
+#Population is in 1000s
+additional_data$Population <- additional_data$Population * 1000
+```
+
+```{r echo = F}
+#Get the total GDP
+additional_data$GDP <- additional_data$GDPPC * additional_data$Population
+#World's total GDP by year
+world_gdp <- additional_data %>% group_by(Year) %>% summarise(total_gdp = sum(GDP, na.rm = T))
+#Each country's  share in the total GDP
+additional_data$GDPShare <- 0
+for(i in seq(nrow(additional_data))){
+  additional_data$GDPShare[i] <- additional_data$GDP[i] / world_gdp$total_gdp[world_gdp$Year == additional_data$Year[i]]
+}
+str(additional_data)
+summary(additional_data)
+```
+
+*Model Building Preparation*
+
+To prepare for the model building process we first created a dataframe called medal_counts, this consisted of the medal counts, the country code. We specified that it would be countries that have earned five or more medals in the year 2012. We also added a column that stated whether the country is the host country or not. The time range we selected is from 1988 to 2016. Next we created a column that stated is the country has a planned (communist) economy, and another that states if a country is or has been a part of the Soviet Union. We dropped the following two country codes: "EUN", "SCG". Our final data frame that we used is a merge of the medal counts data frame and the GDP and Population data. Finally we created a column with the proportion of medals. We added another column that states the medal proportions for each country from previous Olympic games. 
+```{r echo = F}
+#medal_counts <- summarize(group_by(winners_only, Year, Host_NOC, NOC), Medal_Count = n())
+#Medal count of each country by year
+medal_counts <- winners_only %>% group_by(Year, Host_NOC, NOC) %>% summarise(Medal_Count = n())
+#Is the country host country?
+medal_counts$is_host <- ifelse(medal_counts$NOC == medal_counts$Host_NOC, 1, 0)
+```
+
+```{r echo = F}
+#Select countries that won at least 5 medals in 2012 for analysis
+countries_of_interest <- subset(medal_counts, select = c(NOC), Year == 2012 & Medal_Count >= 5)
+medal_counts <- subset(medal_counts, NOC %in% countries_of_interest$NOC)
+#Year range is 1988 to 2012, before that cold war affected a lot of things
+medal_counts <- subset(medal_counts, Year >= 1988)
+```
+
+```{r echo = F}
+#These countries had/have economies tightly controlled by their governments
+medal_counts$planned_economy <- ifelse(medal_counts$NOC %in% c("CHN", "PRK", "VIE", "LAO", "CUB"), 1, 0)
+```
+
+```{r echo = F}
+medal_counts$planned_economy <- ifelse(medal_counts$Year <= 1992 & medal_counts$NOC %in% c("MGL", "SLO", "BIH", "SRB", "ANG", "COD", "ERI"), 1, medal_counts$planned_economy)
+```
+
+```{r echo = F}
+#Countries in the former Soviet Union
+medal_counts$is_soviet <- ifelse(medal_counts$NOC %in% c("RUS", "UKR", "BLR", "UZB", "KAZ", "GEO", "AZE", "LTU", "MDA", "LAT", "KGZ", "TJK", "ARM", "TKM", "EST"), 1, 0)
+```
+
+```{r echo = F}
+names(total_medals) <- c("Year", "Total_Medals")
+```
+
+```{r echo = F}
+#Team codes that don't correspond to actual countries
+medal_counts <- subset(medal_counts, NOC != "EUN" & NOC != "SCG")
+medal_counts <- merge(medal_counts, total_medals)
+```
+
+```{r echo = F}
+final_data <- merge(medal_counts, additional_data)
+#We are interested in the medals earned out of total available rather than the actual medal count
+final_data$Medal_Proportion <- final_data$Medal_Count / final_data$Total_Medals
+```
+
+```{r echo = F}
+final_data$is_host <- as.factor(final_data$is_host)
+final_data$is_soviet <- as.factor(final_data$is_soviet)
+final_data$planned_economy <- as.factor(final_data$planned_economy)
+```
+
+```{r echo = F}
+#Immediately preceding Olympic's medal proportion is expected to be a very good indicator of performance in this Olympics
+for(i in seq(29, nrow(final_data)))
+  final_data[i,"prev_proportion"] <- ifelse(length(final_data$Medal_Proportion[(final_data$Year == final_data$Year[i] - 4) & (final_data$NOC == final_data$NOC[i])]) != 0, final_data$Medal_Proportion[(final_data$Year == final_data$Year[i] - 4) & (final_data$NOC == final_data$NOC[i])], 0)
+```
+
+## Model Building 
+
+*Model Development*
+
+To develop our model we began by dividing the data into training and test sets. The training data was from 1988 to 2012 and the test data was the year 2016. The variables we wanted to take into consideration where: is_host, planned_economy, is_soviet, log(GDPPC), log(Population), log(GDP), GDPShare, pre_proportion, Total_Medals. We began by looking at box plots of is_host and planned_economy to makes sure the distributions were different. 
+```{r echo = F}
+final_data <- na.omit(final_data)
+training_data <- subset(final_data, Year < 2016)
+test_data <- subset(final_data, Year == 2016)
+```
+
+```{r echo = F}
+medal_proportion <- ggplot(final_data, aes(y = Medal_Proportion))
+medal_proportion.is_host <- medal_proportion + geom_boxplot(aes(x = is_host))
+medal_proportion.is_host
+```
+
+```{r echo = F}
+medal_proportion.planned_economy <- medal_proportion + geom_boxplot(aes(x = planned_economy))
+medal_proportion.planned_economy
+```
+
+
+After examining the box plots, we can see that means appear visually different between both is_host and planned_economy variables. Next we created a correlation plot between the numerical variables. By doing so we can see that the variables that correlate with Medal_Proportion are: log(GDP), log(GDPPC), log(Population), GDPShare, prev_proportion. 
+```{r echo = F}
+corelation_data <- final_data[c("Medal_Proportion", "GDP", "GDPPC", "Population", "GDPShare", "prev_proportion", "Total_Medals")]
+corelation_data$GDP <- log(final_data$GDP)
+corelation_data$GDPPC <- log(final_data$GDPPC)
+corelation_data$Population <- log(final_data$Population)
+cortable <- cor(corelation_data)
+corrplot.mixed(cortable)
+```
+
+To create a clearer picture we created scatter plots between log(GDPPC) and Medal_Proportion and another between log(GDP) and Medal_Proportion. We created a third scatter plot between log(Population) and Medal_proportion. We can see there is a some correlation that is positively increasing.
+
+```{r echo = F}
+medal_proportion.gdppc <- medal_proportion + geom_point(aes(x = log(GDPPC)))
+medal_proportion.gdppc
+```
+
+```{r echo = F}
+medal_proportion.gdpshare <- medal_proportion + geom_point(aes(x = log(GDPShare)))
+medal_proportion.gdpshare
+```
+
+```{r echo = F}
+medal_proportion.population <- medal_proportion + geom_point(aes(x = log(Population)))
+medal_proportion.population
+```
+
+The next step we took in selecting our models variables was feature selection. This showed us that the best variables are prev_proportion, GDPShare, is_host, and Total_Medals. After some trial and error we found that Total_Medals is not a good variable to use in our model. Below you can see the BIC plot that we used for the medal selection. 
+
+```{r echo = F}
+#Feature selection
+reg.best <- regsubsets(Medal_Proportion ~ is_host + planned_economy + is_soviet + log(GDPPC) + log(Population) + log(GDP) + GDPShare + prev_proportion + Total_Medals, data = training_data)
+plot(reg.best, scale = "bic")
+#summary(reg.best)
+```
+
+
+## The Model
+
+*The Model We Created*
+
+The variables that we found created the best model (as stated earlier) are prev_proportion, GDPShare, and is_host. We incorporated these variables into the linear model and trained the model, using the training dataset. The model can be seen below. The VIF values for these variables are all around 2 and 1, indicating that there is not much multicollinearity between these variables. The small p-values that these variables have indicate that they are statistically significant in our model. Our adjusted R squared is 86.61 percent, this accounts for much of the variance in the data. 
+
+```{r echo = T}
+#Prediction model
+medal_model <- lm(Medal_Proportion ~ prev_proportion + GDPShare + is_host, data = training_data)
+summary(medal_model)
+vif(medal_model)
+```
+
+*Reliability of results*
+
+As seen above in the model summary, we can see that the adjusted R squared is 86.61%, indicating a good model. We can see below that we made a prediction for Japan in the 2020 Olympic Games, which is in Tokyo. The values that we used were GDPShare and the prev_proportion. The GDPShare was a predicted value that we obtained from tradingeconomics.com. Our model predicted that Japan will win 6.3% of the Proportion of Medals. 
+```{r echo = F}
+#Prediction for Japan 2020
+df <- data.frame(prev_proportion = c(0.0316361839), GDPShare = c(5400/97789.46), is_host = test_data$is_host[5], GDPPC = c(51000), Population = c(125039023))
+cat(predict(medal_model, df), "\n")
+```
+
+Next we wanted to see the reliability of our results, we tested out model on the USA in the year 2016. Our model predicted that the US would have 11.6% of the Proportion of Medals. The actual was 13.0%
+
+```{r echo = F}
+#Prediction for USA 2016
+
+cat(predict(medal_model, test_data[test_data$NOC == "USA",]), "\n")
+```
+Below we can see the mean error in the prediction, which is .12 and the standard deviation is 1.08. This indicated that the model error could have essentially been 0 because it falls in the 95% confidence interval. 
+```{r echo = F}
+a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)* 100
+#Mean of error in prediction
+mean(a)
+#Standard deviation of error
+sd(a)
+```
+
+
+*Predictions we can make*
+
+By using this model we can predict the proportion of medals that each country will win at future Summer Olympic games with a model that explains the variance by 86.61%. In order to improve the model accuracy we could include the athletes of each country by discipline, this could improve accuracy because we would know how many medals each athlete has won.  
+
+## Conclusion
+In conclusion the best variables we found to use when predicting Olympic Medal Proportions are: prev_proportion, GDPShare, is_host. The process we used was to clean the Olympic dataset and then we cleaned the GDP and Population dataset. Next we looked at the boxplots, correlation plots and scatter plots to determine which variables were best to use. The next step we took was feature selection and we used a BIC plot to determine the best plots. By using all these methods we were able to create our model. By looking at the adjusted R squared of 86.62% and the VIF values we were able to determine that out model was a good model. 
+
+## Citations
+1. “120 years of Olympic history: athletes and results.” [Online]. Available: https://www.kaggle.com/heesoo37/120-years-of-olympic-history-athletes-and-results.
+
+2. Maddison Project Database, version 2018. Bolt, Jutta, Robert Inklaar, Herman de Jong and Jan Luiten van Zanden (2018), “Rebasing ‘Maddison’: new income comparisons and the shape of long-run economic development”, Maddison Project Working paper 10  
+For the references to the original research on individual countries, see Appendix A of Bolt et al. (2018).
+
+3. “TRADING ECONOMICS | 20 million INDICATORS FROM 196 COUNTRIES.” [Online]. Available: https://tradingeconomics.com/.
+
+4. A. B. Bernard and M. R. Busse, “Who Wins the Olympic Games: Economic Resources and Medal Totals,” Review of Economics and Statistics, vol. 86, no. 1, pp. 413–417, Feb. 2004.
+
+5. C. F. Gonzales, “Going for the Gold in the Cidade Maravilhosa: Who Will Win the 2016 Olympic Games in Rio de Janeiro?,” p. 9.

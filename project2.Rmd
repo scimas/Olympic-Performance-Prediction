@@ -1,0 +1,209 @@
+---
+title: "DATS6101 Project 2"
+author: "Mihir Gadgil, Elie Tetteh-Wayoe, Jessica Fogerty, Aluya Omofuma, Pierre Bamba"
+date: "November 19, 2018"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include = F}
+library(ggplot2)
+library(dplyr)
+library(leaps)
+library(faraway)
+library(corrplot)
+```
+
+```{r load_data, echo = F}
+#Load the dataset
+athletes <- read.csv("athlete_events.csv", na.strings = c("NA"))
+```
+
+```{r cleanup_1, echo = F}
+#athletes$Year <- as.integer(athletes$Year)
+athletes$Medal <- factor(athletes$Medal, levels = c("Bronze", "Silver", "Gold"), ordered = TRUE)
+athletes$NOC <- as.character(athletes$NOC)
+#athletes$Gender <- as.factor(athletes$Gender)
+athletes <- subset(athletes, select = -c(Age, Height, Weight, City, Games))
+athletes <- subset(athletes, Season == "Summer")
+```
+
+```{r cleanup_2, include = TRUE}
+hosts <- data.frame(Year = c(seq(1896, 1912, 4), seq(1920, 1936, 4), seq(1948, 2016, 4)), Host_NOC = c("GRE", "FRA", "USA", "GBR", "SWE", "BEL", "FRA", "NED", "USA", "GER", "GBR", "FIN", "AUS", "ITA", "JPN", "MEX", "GER", "CAN", "RUS", "USA", "KOR", "ESP", "USA", "AUS", "GRE", "CHN", "GBR", "BRA"))
+athletes <- merge(athletes, hosts, by.x = "Year", by.y = "Year")
+athletes$Host_NOC[athletes$Year == 1956 & athletes$City == "Stockholm"] <- "SWE"
+athletes$Host_NOC <- as.character(athletes$Host_NOC)
+athletes$NOC[athletes$NOC == "URS"] <- "RUS"
+athletes$NOC[athletes$NOC == "FRG"] <- "GER"
+athletes$NOC[athletes$NOC == "GDR"] <- "GER"
+athletes$NOC[athletes$NOC == "ANZ"] <- "AUS"
+#Equating China and Hong Kong would help too, but it seems like they have been participating as different teams since 1952.
+```
+
+```{r all_medals, echo = F}
+#Subset data to obtain only the medal winners 
+winners_only <- subset(athletes, !is.na(Medal))
+```
+
+```{r host_advantage, include = T}
+#Find the total medal count per year
+total_medals <- winners_only %>% group_by(Year) %>% summarize(Medal_Count = n())
+```
+
+```{r echo = F}
+#GDP per capita, and Population data
+additional_data <- readxl::read_excel("mpd2018.xlsx", sheet = "Full data")
+additional_data <- subset(additional_data, select = -c(rgdpnapc, i_cig, i_bm), year >= 1896)
+names(additional_data) <- c("NOC", "Country", "Year", "GDPPC", "Population")
+#Population is in 1000s
+additional_data$Population <- additional_data$Population * 1000
+```
+
+```{r echo = F}
+#Get the total GDP
+additional_data$GDP <- additional_data$GDPPC * additional_data$Population
+#World's total GDP by year
+world_gdp <- additional_data %>% group_by(Year) %>% summarise(total_gdp = sum(GDP, na.rm = T))
+#Each country's  share in the total GDP
+additional_data$GDPShare <- 0
+for(i in seq(nrow(additional_data))){
+  additional_data$GDPShare[i] <- additional_data$GDP[i] / world_gdp$total_gdp[world_gdp$Year == additional_data$Year[i]]
+}
+```
+
+```{r echo = F}
+#medal_counts <- summarize(group_by(winners_only, Year, Host_NOC, NOC), Medal_Count = n())
+#Medal count of each country by year
+medal_counts <- winners_only %>% group_by(Year, Host_NOC, NOC) %>% summarise(Medal_Count = n())
+#Is the country host country?
+medal_counts$is_host <- ifelse(medal_counts$NOC == medal_counts$Host_NOC, 1, 0)
+```
+
+```{r echo = F}
+#Select countries that won at least 5 medals in 2012 for analysis
+countries_of_interest <- subset(medal_counts, select = c(NOC), Year == 2012 & Medal_Count >= 5)
+medal_counts <- subset(medal_counts, NOC %in% countries_of_interest$NOC)
+#Year range is 1988 to 2012, before that cold war affected a lot of things
+medal_counts <- subset(medal_counts, Year >= 1988)
+```
+
+```{r echo = F}
+#These countries had/have economies tightly controlled by their governments
+medal_counts$planned_economy <- ifelse(medal_counts$NOC %in% c("CHN", "PRK", "VIE", "LAO", "CUB"), 1, 0)
+```
+
+```{r echo = F}
+medal_counts$planned_economy <- ifelse(medal_counts$Year <= 1992 & medal_counts$NOC %in% c("MGL", "SLO", "BIH", "SRB", "ANG", "COD", "ERI"), 1, medal_counts$planned_economy)
+```
+
+```{r echo = F}
+#Countries in the former Soviet Union
+medal_counts$is_soviet <- ifelse(medal_counts$NOC %in% c("RUS", "UKR", "BLR", "UZB", "KAZ", "GEO", "AZE", "LTU", "MDA", "LAT", "KGZ", "TJK", "ARM", "TKM", "EST"), 1, 0)
+```
+
+```{r echo = F}
+names(total_medals) <- c("Year", "Total_Medals")
+```
+
+```{r echo = F}
+#Team codes that don't correspond to actual countries
+medal_counts <- subset(medal_counts, NOC != "EUN" & NOC != "SCG")
+medal_counts <- merge(medal_counts, total_medals)
+```
+
+```{r echo = F}
+final_data <- merge(medal_counts, additional_data)
+#We are interested in the medals earned out of total available rather than the actual medal count
+final_data$Medal_Proportion <- final_data$Medal_Count / final_data$Total_Medals
+```
+
+```{r echo = F}
+final_data$is_host <- as.factor(final_data$is_host)
+final_data$is_soviet <- as.factor(final_data$is_soviet)
+final_data$planned_economy <- as.factor(final_data$planned_economy)
+```
+
+```{r echo = F}
+#Immediately preceding Olympic's medal proportion is expected to be a very good indicator of performance in this Olympics
+for(i in seq(29, nrow(final_data)))
+  final_data[i,"prev_proportion"] <- ifelse(length(final_data$Medal_Proportion[(final_data$Year == final_data$Year[i] - 4) & (final_data$NOC == final_data$NOC[i])]) != 0, final_data$Medal_Proportion[(final_data$Year == final_data$Year[i] - 4) & (final_data$NOC == final_data$NOC[i])], 0)
+```
+
+```{r echo = F}
+final_data <- na.omit(final_data)
+training_data <- subset(final_data, Year < 2016)
+test_data <- subset(final_data, Year == 2016)
+```
+
+Plots
+```{r echo = F}
+medal_proportion <- ggplot(final_data, aes(y = Medal_Proportion))
+medal_proportion.is_host <- medal_proportion + geom_boxplot(aes(x = is_host))
+medal_proportion.is_host
+```
+
+```{r echo = F}
+medal_proportion.planned_economy <- medal_proportion + geom_boxplot(aes(x = planned_economy))
+medal_proportion.planned_economy
+```
+
+```{r echo = F}
+corelation_data <- final_data[c("Medal_Proportion", "GDP", "GDPPC", "Population", "GDPShare", "prev_proportion", "Total_Medals")]
+corelation_data$GDP <- log(final_data$GDP)
+corelation_data$GDPPC <- log(final_data$GDPPC)
+corelation_data$Population <- log(final_data$Population)
+cortable <- cor(corelation_data)
+corrplot.mixed(cortable)
+```
+
+```{r echo = F}
+medal_proportion.gdppc <- medal_proportion + geom_point(aes(x = log(GDPPC)))
+medal_proportion.gdppc
+```
+
+```{r echo = F}
+medal_proportion.gdp <- medal_proportion + geom_point(aes(x = log(GDP)))
+medal_proportion.gdp
+```
+
+```{r echo = F}
+medal_proportion.gdpshare <- medal_proportion + geom_point(aes(x = log(GDPShare)))
+medal_proportion.gdpshare
+```
+
+```{r echo = F}
+medal_proportion.population <- medal_proportion + geom_point(aes(x = log(Population)))
+medal_proportion.population
+```
+
+```{r echo = F}
+#Feature selection
+reg.best <- regsubsets(Medal_Proportion ~ is_host + planned_economy + is_soviet + log(GDPPC) + log(Population) + log(GDP) + GDPShare + prev_proportion + Total_Medals, data = training_data)
+feat_sel <- plot(reg.best, scale = "bic")
+feat_sel
+summary(reg.best)
+```
+
+```{r echo = F}
+#Prediction model
+medal_model <- lm(Medal_Proportion ~ prev_proportion + GDPShare + is_host, data = training_data)
+summary(medal_model)
+vif(medal_model)
+```
+
+```{r echo = F}
+#Prediction for Japan 2020
+df <- data.frame(prev_proportion = c(0.0316361839), GDPShare = c(5400/97789.46), is_host = test_data$is_host[5], GDPPC = c(51000), Population = c(125039023))
+cat(predict(medal_model, df), "\n")
+#Prediction for USA 2016
+cat(predict(medal_model, test_data[test_data$NOC == "USA",]))
+```
+
+```{r echo = F}
+a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)* 100
+#Mean of error in prediction
+mean(a)
+#Standard deviation of error
+sd(a)
+```
