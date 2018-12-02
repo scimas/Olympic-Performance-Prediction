@@ -214,13 +214,15 @@ medal_proportion.population
 
 The next step we took in selecting our models variables was feature selection. This showed us that the best variables are prev_proportion, GDPShare, is_host, and Total_Medals. After some trial and error we found that Total_Medals is not a good variable to use in our model. Below you can see the BIC plot that we used for the medal selection. 
 
-```{r echo = F}
+```{r include = F}
 #Feature selection
 reg.best <- regsubsets(Medal_Proportion ~ is_host + planned_economy + is_soviet + log(GDPPC) + log(Population) + log(GDP) + GDPShare + prev_proportion + Total_Medals, data = training_data)
-plot(reg.best, scale = "bic")
 #summary(reg.best)
 ```
 
+```{r echo = F}
+plot(reg.best, scale = "bic")
+```
 
 ## The Model
 

@@ -180,6 +180,9 @@ medal_proportion.population
 ```{r echo = F}
 #Feature selection
 reg.best <- regsubsets(Medal_Proportion ~ is_host + planned_economy + is_soviet + log(GDPPC) + log(Population) + log(GDP) + GDPShare + prev_proportion + Total_Medals, data = training_data)
+```
+
+```{r echo = F}
 feat_sel <- plot(reg.best, scale = "bic")
 feat_sel
 summary(reg.best)
