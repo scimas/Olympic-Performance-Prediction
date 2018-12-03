@@ -253,13 +253,13 @@ Next we wanted to see the reliability of our results, we tested out model on the
 
 cat(predict(medal_model, test_data[test_data$NOC == "USA",]), "\n")
 ```
-Below we can see the mean error in the prediction, which is .12 and the standard deviation is 1.08. This indicated that the model error could have essentially been 0 because it falls in the 95% confidence interval. 
+Below we can see the mean error in the prediction, which is 2.5 medals and the standard deviation is 21.81 medals. This indicated that the model error could have essentially been 0 because it falls in the 95% confidence interval. 
 ```{r echo = F}
-a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)* 100
+a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)
 #Mean of error in prediction
-mean(a)
+mean(a) * 2023
 #Standard deviation of error
-sd(a)
+sd(a) * 2023
 ```
 
 
