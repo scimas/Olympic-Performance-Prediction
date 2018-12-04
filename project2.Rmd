@@ -197,16 +197,16 @@ vif(medal_model)
 
 ```{r echo = F}
 #Prediction for Japan 2020
-df <- data.frame(prev_proportion = c(0.0316361839), GDPShare = c(5400/97789.46), is_host = test_data$is_host[5], GDPPC = c(51000), Population = c(125039023))
+df <- data.frame(prev_proportion = c(0.0316361839), GDPShare = c(5400/97789.46), is_host = test_data$is_host[5])
 cat(predict(medal_model, df), "\n")
 #Prediction for USA 2016
 cat(predict(medal_model, test_data[test_data$NOC == "USA",]))
 ```
 
 ```{r echo = F}
-a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)* 100
+a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)
 #Mean of error in prediction
-mean(a)
+mean(a) * 100
 #Standard deviation of error
-sd(a)
+sd(a) * 100
 ```

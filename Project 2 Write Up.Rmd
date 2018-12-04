@@ -239,33 +239,33 @@ vif(medal_model)
 
 *Reliability of results*
 
-As seen above in the model summary, we can see that the adjusted R squared is 86.61%, indicating a good model. We can see below that we made a prediction for Japan in the 2020 Olympic Games, which is in Tokyo. The values that we used were GDPShare and the prev_proportion. The GDPShare was a predicted value that we obtained from tradingeconomics.com. Our model predicted that Japan will win 6.3% of the Proportion of Medals. 
+As seen above in the model summary, we can see that the adjusted $R^{2}$ is 0.8661, indicating a good model. We can see below that we made a prediction for Japan in the 2020 Olympic Games, which is in Tokyo. The values that we used were GDPShare and the prev_proportion. The GDPShare was a predicted value that we obtained from tradingeconomics.com. Our model predicted that Japan will win 6.37% of the Proportion of Medals. 
 ```{r echo = F}
 #Prediction for Japan 2020
-df <- data.frame(prev_proportion = c(0.0316361839), GDPShare = c(5400/97789.46), is_host = test_data$is_host[5], GDPPC = c(51000), Population = c(125039023))
+df <- data.frame(prev_proportion = c(0.0316361839), GDPShare = c(5400/97789.46), is_host = test_data$is_host[5])
 cat(predict(medal_model, df), "\n")
 ```
 
-Next we wanted to see the reliability of our results, we tested out model on the USA in the year 2016. Our model predicted that the US would have 11.6% of the Proportion of Medals. The actual was 13.0%
+Next we wanted to see the reliability of our results, we tested out model on the USA in the year 2016. Our model predicted that the US would have 11.6% of the Medals (235). The actual was 13.0% (264 medals.)
 
 ```{r echo = F}
 #Prediction for USA 2016
 
 cat(predict(medal_model, test_data[test_data$NOC == "USA",]), "\n")
 ```
-Below we can see the mean error in the prediction, which is 2.5 medals and the standard deviation is 21.81 medals. This indicated that the model error could have essentially been 0 because it falls in the 95% confidence interval. 
+Below we can see the mean error in the prediction, which is .12 (2.5 medals) and the standard deviation is 1.08 (21.81 medals). This indicated that the model error could essentially have been 0 because it falls in the 95% confidence interval. 
 ```{r echo = F}
-a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)
+a <- (predict(medal_model, test_data) - test_data$Medal_Proportion)* 100
 #Mean of error in prediction
-mean(a) * 2023
+mean(a)
 #Standard deviation of error
-sd(a) * 2023
+sd(a)
 ```
 
 
 *Predictions we can make*
 
-By using this model we can predict the proportion of medals that each country will win at future Summer Olympic games with a model that explains the variance by 86.61%. In order to improve the model accuracy we could include the athletes of each country by discipline, this could improve accuracy because we would know how many medals each athlete has won.  
+By using this model we can predict the proportion of medals that each country will win in future Summer Olympic games. Our model is already quite good, able to explain 86.61% of the variance. But we could improve the model accuracy by somehow including the athletes' information for each country, since some athletes perform much better that others.  
 
 ## Conclusion
 In conclusion the best variables we found to use when predicting Olympic Medal Proportions are: prev_proportion, GDPShare, is_host. The process we used was to clean the Olympic dataset and then we cleaned the GDP and Population dataset. Next we looked at the boxplots, correlation plots and scatter plots to determine which variables were best to use. The next step we took was feature selection and we used a BIC plot to determine the best plots. By using all these methods we were able to create our model. By looking at the adjusted R squared of 86.62% and the VIF values we were able to determine that out model was a good model. 
