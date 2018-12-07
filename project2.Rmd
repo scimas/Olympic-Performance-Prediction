@@ -210,3 +210,10 @@ mean(a) * 100
 #Standard deviation of error
 sd(a) * 100
 ```
+
+```{r echo = F}
+dv <- data.frame(test_data$Country, test_data$Medal_Count, predict(medal_model, test_data)*2023)
+names(dv) <- c("Country", "Actual Medal Count", "Prediction")
+View(dv)
+```
+
